@@ -21,13 +21,13 @@ from signjoey.vocabulary import (
     EOS_TOKEN,
     BOS_TOKEN,
 )
-from signjoey.batch import Batch
+from signjoey.batch import PoseBatch
 from signjoey.helpers import freeze_params
 from torch import Tensor
 from typing import Union
 
-
-class SignModel(nn.Module):
+# Clément
+class PoseModel(nn.Module):
     """
     Base Model class
     """
@@ -37,7 +37,7 @@ class SignModel(nn.Module):
         encoder: Encoder,
         gloss_output_layer: nn.Module,
         decoder: Decoder,
-        sgn_embed: SpatialEmbeddings,
+        pose_embed: list,
         txt_embed: Embeddings,
         gls_vocab: GlossVocabulary,
         txt_vocab: TextVocabulary,
@@ -49,7 +49,7 @@ class SignModel(nn.Module):
 
         :param encoder: encoder
         :param decoder: decoder
-        :param sgn_embed: spatial feature frame embeddings
+        :param pose_embed: list of pose embeddings
         :param txt_embed: spoken language word embedding
         :param gls_vocab: gls vocabulary
         :param txt_vocab: spoken language vocabulary
@@ -61,7 +61,13 @@ class SignModel(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-        self.sgn_embed = sgn_embed
+        # Embedding layers (for each input)
+        self.pose_types = ['body_2d', 'body_3d', 'face_2d', 'face_3d', 
+                          'left_hand_2d', 'left_hand_3d', 'right_hand_2d', 'right_hand_3d']
+        for i in range(len(self.pose_types)):
+          setattr(self, self.pose_types[i]+'_embed', pose_embed[i])
+        
+        
         self.txt_embed = txt_embed
 
         self.gls_vocab = gls_vocab
@@ -78,7 +84,15 @@ class SignModel(nn.Module):
     # pylint: disable=arguments-differ
     def forward(
         self,
-        sgn: Tensor,
+        # sgn: Tensor,
+        body_2d: Tensor,
+        body_3d: Tensor,
+        face_2d: Tensor,
+        face_3d: Tensor,
+        left_hand_2d: Tensor,
+        left_hand_3d: Tensor,
+        right_hand_2d: Tensor,
+        right_hand_3d: Tensor,
         sgn_mask: Tensor,
         sgn_lengths: Tensor,
         txt_input: Tensor,
@@ -95,10 +109,15 @@ class SignModel(nn.Module):
         :param txt_mask: target mask
         :return: decoder outputs
         """
-        encoder_output, encoder_hidden = self.encode(
-            sgn=sgn, sgn_mask=sgn_mask, sgn_length=sgn_lengths
-        )
+        pose = [body_2d, body_3d, face_2d, face_3d, 
+                left_hand_2d, left_hand_3d, right_hand_2d, right_hand_3d]
 
+        encoder_output, encoder_hidden = self.encode(
+            pose = pose,
+            sgn_mask=sgn_mask, 
+            sgn_length=sgn_lengths
+        )
+        
         if self.do_recognition:
             # Gloss Recognition Part
             # N x T x C
@@ -109,7 +128,6 @@ class SignModel(nn.Module):
             gloss_probabilities = gloss_probabilities.permute(1, 0, 2)
         else:
             gloss_probabilities = None
-
         if self.do_translation:
             unroll_steps = txt_input.size(1)
             decoder_outputs = self.decode(
@@ -126,18 +144,30 @@ class SignModel(nn.Module):
         return decoder_outputs, gloss_probabilities
 
     def encode(
-        self, sgn: Tensor, sgn_mask: Tensor, sgn_length: Tensor
+        self, pose: list, sgn_mask: Tensor, sgn_length: Tensor
     ) -> (Tensor, Tensor):
         """
         Encodes the source sentence.
 
-        :param sgn:
+        :param pose:
         :param sgn_mask:
         :param sgn_length:
         :return: encoder outputs (output, hidden_concat)
         """
+        embed_pose = []
+        for pose_idx in range(len(pose)):
+          pose_i = pose[pose_idx]
+          # embed_pose.append(self.pose_embed[pose_idx](x=pose_i,
+          #                   mask=pose_i.new(pose_i.shape[0], 1, pose_i.shape[1]).fill_(1)))
+
+          embed_pose.append(getattr(self, self.pose_types[pose_idx]+'_embed')(x=pose_i,
+                            mask=pose_i.new(pose_i.shape[0], 1, pose_i.shape[1]).fill_(1)))
+ 
+        # concatenate features
+        concat_features = torch.cat(embed_pose, dim=2)
+
         return self.encoder(
-            embed_src=self.sgn_embed(x=sgn, mask=sgn_mask),
+            embed_src=concat_features,
             src_length=sgn_length,
             mask=sgn_mask,
         )
@@ -176,7 +206,7 @@ class SignModel(nn.Module):
 
     def get_loss_for_batch(
         self,
-        batch: Batch,
+        batch: PoseBatch,
         recognition_loss_function: nn.Module,
         translation_loss_function: nn.Module,
         recognition_loss_weight: float,
@@ -197,7 +227,15 @@ class SignModel(nn.Module):
 
         # Do a forward pass
         decoder_outputs, gloss_probabilities = self.forward(
-            sgn=batch.sgn,
+            # sgn=batch.sgn,
+            body_2d=batch.body_2d,
+            body_3d=batch.body_3d,
+            face_2d=batch.face_2d,
+            face_3d=batch.face_3d,
+            left_hand_2d=batch.left_hand_2d,
+            left_hand_3d=batch.left_hand_3d,
+            right_hand_2d=batch.right_hand_2d,
+            right_hand_3d=batch.right_hand_3d,
             sgn_mask=batch.sgn_mask,
             sgn_lengths=batch.sgn_lengths,
             txt_input=batch.txt_input,
@@ -235,7 +273,7 @@ class SignModel(nn.Module):
 
     def run_batch(
         self,
-        batch: Batch,
+        batch: PoseBatch,
         recognition_beam_size: int = 1,
         translation_beam_size: int = 1,
         translation_beam_alpha: float = -1,
@@ -254,9 +292,19 @@ class SignModel(nn.Module):
         :return: stacked_output: hypotheses for batch,
             stacked_attention_scores: attention scores for batch
         """
-
+        pose = [
+            batch.body_2d,
+            batch.body_3d,
+            batch.face_2d,
+            batch.face_3d,
+            batch.left_hand_2d,
+            batch.left_hand_3d,
+            batch.right_hand_2d,
+            batch.right_hand_3d
+        ]
+        
         encoder_output, encoder_hidden = self.encode(
-            sgn=batch.sgn, sgn_mask=batch.sgn_mask, sgn_length=batch.sgn_lengths
+            pose=pose, sgn_mask=batch.sgn_mask, sgn_length=batch.sgn_lengths
         )
 
         if self.do_recognition:
@@ -295,13 +343,16 @@ class SignModel(nn.Module):
         else:
             decoded_gloss_sequences = None
 
+        # Mask (should be in defined in PoseBatch)
+        sgn_mask = (batch.body_2d != (batch.body_2d).new_zeros(batch.body_2d.shape))[..., 0].unsqueeze(1)
+
         if self.do_translation:
             # greedy decoding
             if translation_beam_size < 2:
                 stacked_txt_output, stacked_attention_scores = greedy(
                     encoder_hidden=encoder_hidden,
                     encoder_output=encoder_output,
-                    src_mask=batch.sgn_mask,
+                    src_mask=sgn_mask,
                     embed=self.txt_embed,
                     bos_index=self.txt_bos_index,
                     eos_index=self.txt_eos_index,
@@ -314,7 +365,7 @@ class SignModel(nn.Module):
                     size=translation_beam_size,
                     encoder_hidden=encoder_hidden,
                     encoder_output=encoder_output,
-                    src_mask=batch.sgn_mask,
+                    src_mask=sgn_mask,
                     embed=self.txt_embed,
                     max_output_length=translation_max_output_length,
                     alpha=translation_beam_alpha,
@@ -338,26 +389,26 @@ class SignModel(nn.Module):
             "%s(\n"
             "\tencoder=%s,\n"
             "\tdecoder=%s,\n"
-            "\tsgn_embed=%s,\n"
+            # "\tsgn_embed=%s,\n"
             "\ttxt_embed=%s)"
             % (
                 self.__class__.__name__,
                 self.encoder,
                 self.decoder,
-                self.sgn_embed,
+                # self.sgn_embed,
                 self.txt_embed,
             )
         )
 
-
-def build_model(
+# Clément
+def build_pose_model(
     cfg: dict,
     sgn_dim: int,
     gls_vocab: GlossVocabulary,
     txt_vocab: TextVocabulary,
     do_recognition: bool = True,
     do_translation: bool = True,
-) -> SignModel:
+) -> PoseModel:
     """
     Build and initialize the model according to the configuration.
 
@@ -372,27 +423,52 @@ def build_model(
 
     txt_padding_idx = txt_vocab.stoi[PAD_TOKEN]
 
-    sgn_embed: SpatialEmbeddings = SpatialEmbeddings(
-        **cfg["encoder"]["embeddings"],
+    pose_estimation_fields = [('body_2d', 13*2), ('body_3d', 13*3), ('face_2d', 84*2), ('face_3d', 84*3), 
+                              ('left_hand_2d', 21*2), ('left_hand_3d', 21*3), ('right_hand_2d', 21*2), ('right_hand_3d', 21*3)]
+    new_embedding_config = {
+            'embedding_dim': 64, # is it good?
+            'scale': False,
+            'dropout': 0.1,
+            'norm_type': 'batch',
+            'activation_type': 'softsign'
+    }
+
+    embedding_list = []
+
+    for field in pose_estimation_fields:
+      new_embedding = SpatialEmbeddings(
+        **new_embedding_config,
         num_heads=cfg["encoder"]["num_heads"],
-        input_size=sgn_dim,
-    )
+        input_size=field[1],
+      )
+      embedding_list.append(new_embedding)
+
 
     # build encoder
-    enc_dropout = cfg["encoder"].get("dropout", 0.0)
-    enc_emb_dropout = cfg["encoder"]["embeddings"].get("dropout", enc_dropout)
+    new_hidden_size = new_embedding_config['embedding_dim']*len(pose_estimation_fields)
+    new_encoder_config = {
+        'type': 'transformer',
+        'num_layers': 3,
+        'num_heads': 8,
+        'hidden_size': new_hidden_size,
+        'ff_size': 2048,
+        'dropout': 0.1
+    }
+
+    enc_dropout = new_encoder_config.get("dropout", 0.0)
+    enc_emb_dropout = enc_dropout
     if cfg["encoder"].get("type", "recurrent") == "transformer":
-        assert (
-            cfg["encoder"]["embeddings"]["embedding_dim"]
-            == cfg["encoder"]["hidden_size"]
-        ), "for transformer, emb_size must be hidden_size"
+        # assert (
+        #     cfg["encoder"]["embeddings"]["embedding_dim"]
+        #     == cfg["encoder"]["hidden_size"]
+        # ), "for transformer, emb_size must be hidden_size"
 
         encoder = TransformerEncoder(
-            **cfg["encoder"],
-            emb_size=sgn_embed.embedding_dim,
+            **new_encoder_config,
+            # emb_size=sgn_embed.embedding_dim,
             emb_dropout=enc_emb_dropout,
         )
-    else:
+    else: # code not adapted yet 
         encoder = RecurrentEncoder(
             **cfg["encoder"],
             emb_size=sgn_embed.embedding_dim,
@@ -436,11 +512,11 @@ def build_model(
         txt_embed = None
         decoder = None
 
-    model: SignModel = SignModel(
+    model: PoseModel = PoseModel(
         encoder=encoder,
         gloss_output_layer=gloss_output_layer,
         decoder=decoder,
-        sgn_embed=sgn_embed,
+        pose_embed=embedding_list,
         txt_embed=txt_embed,
         gls_vocab=gls_vocab,
         txt_vocab=txt_vocab,
