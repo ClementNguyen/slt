@@ -6,3 +6,5 @@
 data
 
 sign_sample_model
+
+*.ipynb_checkpoints
