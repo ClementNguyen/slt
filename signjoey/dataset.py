@@ -8,6 +8,7 @@ from typing import List, Tuple
 import pickle
 import gzip
 import torch
+import os
 
 
 def load_dataset_file(filename):
@@ -148,8 +149,10 @@ class PoseTranslationDataset(data.Dataset):
                 ("right_hand_3d", fields[11])           
             ]
 
-        if not isinstance(path, list):
-            path = [path]
+#        if not isinstance(path, list):
+#            path = [path]
+
+        path = os.listdir(path)
 
         samples = {}
         for annotation_file in path:
@@ -281,8 +284,10 @@ class FeatTranslationDataset(data.Dataset):
                 ("hand_3d_2", fields[19])   
             ]
 
-        if not isinstance(path, list):
-            path = [path]
+#        if not isinstance(path, list):
+#            path = [path]
+
+        path = os.listdir(path)
 
         samples = {}
         for annotation_file in path:
@@ -355,3 +360,13 @@ class FeatTranslationDataset(data.Dataset):
                 )
             )
         super().__init__(examples, fields, **kwargs)
+
+
+# def load_dataset_from_dir(dir_name):
+#     dataset = []
+#     file_list = os.listdir(dir_name)
+#     for file in file_list:
+#         with open(os.path.join(dir_name, file), "rb") as f:
+#             loaded_object = pickle.load(f)
+#             dataset.append(loaded_object)
+#     return dataset

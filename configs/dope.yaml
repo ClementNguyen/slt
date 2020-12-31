@@ -1,14 +1,14 @@
 name: sign_experiment
 data:
     # data_path: ./data/
-    data_path: drive/My Drive/3A/Recvis/slt-master/data/
+    data_path: ./data/dope_outputs/pose_estimation
     version: phoenix_2014_trans
     sgn: sign
     txt: text
     gls: gloss
-    train: PHOENIX2014T/phoenix14t_dope.train
-    dev: PHOENIX2014T/phoenix14t_dope.dev
-    test: PHOENIX2014T/phoenix14t_dope.test
+    train: train
+    dev: dev
+    test: test
     feature_size: 1024
     level: word
     txt_lowercase: true
