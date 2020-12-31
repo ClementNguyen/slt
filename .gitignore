@@ -3,8 +3,10 @@
 
 *.pyc
 
-data
+data/
 
-sign_sample_model
+sign_sample_model/
 
 *.ipynb_checkpoints
+
+__pycache__/
