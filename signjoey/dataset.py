@@ -9,6 +9,7 @@ import pickle
 import gzip
 import torch
 import os
+import random
 
 
 def load_dataset_file(filename):
@@ -247,6 +248,7 @@ class FeatTranslationDataset(data.Dataset):
         self,
         path: str,
         fields: Tuple[RawField, RawField, Field, Field, Field, Field, Field, Field, Field, Field, Field, Field],
+        size=1,
         **kwargs
     ):
         """Create a SignTranslationDataset given paths and fields.
@@ -288,6 +290,7 @@ class FeatTranslationDataset(data.Dataset):
 #            path = [path]
 
         path = os.listdir(path)
+        path = random.shuffle(path)[:int(len(path)*size)]
 
         samples = {}
         for annotation_file in path:

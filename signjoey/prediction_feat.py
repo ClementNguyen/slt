@@ -325,8 +325,8 @@ def feat_test(
         "translation_max_output_length", None
     )
 
-    # load the data
-    _, dev_data, test_data, gls_vocab, txt_vocab = load_feat_data(data_cfg=cfg["data"])
+    # load dev data
+    _, dev_data, _, gls_vocab, txt_vocab = load_feat_data(data_cfg=cfg["data"], sets=['dev'], dev_size=1)
 
     # load model state from disk
     model_checkpoint = load_checkpoint(ckpt, use_cuda=use_cuda)
@@ -562,6 +562,44 @@ def feat_test(
     )
     logger.info("*" * 60)
 
+    def _write_to_file(file_path: str, sequence_ids: List[str], hypotheses: List[str]):
+        with open(file_path, mode="w", encoding="utf-8") as out_file:
+            for seq, hyp in zip(sequence_ids, hypotheses):
+                out_file.write(seq + "|" + hyp + "\n")
+
+    if output_path is not None:
+        if do_recognition:
+            dev_gls_output_path_set = "{}.BW_{:03d}.{}.gls".format(
+                output_path, dev_best_recognition_beam_size, "dev"
+            )
+            _write_to_file(
+                dev_gls_output_path_set,
+                [s for s in dev_data.sequence],
+                dev_best_recognition_result["gls_hyp"],
+            )
+        if do_translation:
+            if dev_best_translation_beam_size > -1:
+                dev_txt_output_path_set = "{}.BW_{:02d}.A_{:1d}.{}.txt".format(
+                    output_path,
+                    dev_best_translation_beam_size,
+                    dev_best_translation_alpha,
+                    "dev",
+                )
+            else:
+                dev_txt_output_path_set = "{}.BW_{:02d}.{}.txt".format(
+                    output_path, dev_best_translation_beam_size, "dev"
+                )
+            _write_to_file(
+                dev_txt_output_path_set,
+                [s for s in dev_data.sequence],
+                dev_best_translation_result["txt_hyp"],
+            )
+
+    del dev_data
+
+    # load dev data
+    _, _, test_data, gls_vocab, txt_vocab = load_feat_data(data_cfg=cfg["data"], sets=['test'], dev_size=1)
+
     test_best_result = validate_on_feat_data(
         model=model,
         data=test_data,
@@ -632,21 +670,8 @@ def feat_test(
     )
     logger.info("*" * 60)
 
-    def _write_to_file(file_path: str, sequence_ids: List[str], hypotheses: List[str]):
-        with open(file_path, mode="w", encoding="utf-8") as out_file:
-            for seq, hyp in zip(sequence_ids, hypotheses):
-                out_file.write(seq + "|" + hyp + "\n")
-
     if output_path is not None:
         if do_recognition:
-            dev_gls_output_path_set = "{}.BW_{:03d}.{}.gls".format(
-                output_path, dev_best_recognition_beam_size, "dev"
-            )
-            _write_to_file(
-                dev_gls_output_path_set,
-                [s for s in dev_data.sequence],
-                dev_best_recognition_result["gls_hyp"],
-            )
             test_gls_output_path_set = "{}.BW_{:03d}.{}.gls".format(
                 output_path, dev_best_recognition_beam_size, "test"
             )
@@ -658,12 +683,6 @@ def feat_test(
 
         if do_translation:
             if dev_best_translation_beam_size > -1:
-                dev_txt_output_path_set = "{}.BW_{:02d}.A_{:1d}.{}.txt".format(
-                    output_path,
-                    dev_best_translation_beam_size,
-                    dev_best_translation_alpha,
-                    "dev",
-                )
                 test_txt_output_path_set = "{}.BW_{:02d}.A_{:1d}.{}.txt".format(
                     output_path,
                     dev_best_translation_beam_size,
@@ -671,24 +690,14 @@ def feat_test(
                     "test",
                 )
             else:
-                dev_txt_output_path_set = "{}.BW_{:02d}.{}.txt".format(
-                    output_path, dev_best_translation_beam_size, "dev"
-                )
                 test_txt_output_path_set = "{}.BW_{:02d}.{}.txt".format(
                     output_path, dev_best_translation_beam_size, "test"
                 )
-
-            _write_to_file(
-                dev_txt_output_path_set,
-                [s for s in dev_data.sequence],
-                dev_best_translation_result["txt_hyp"],
-            )
             _write_to_file(
                 test_txt_output_path_set,
                 [s for s in test_data.sequence],
                 test_best_result["txt_hyp"],
             )
-
         with open(output_path + ".dev_results.pkl", "wb") as out:
             pickle.dump(
                 {

@@ -971,7 +971,7 @@ class FeatTrainManager:
                 opened_file.write("{}|{}\n".format(seq, hyp))
 
 
-def train_feat(cfg_file: str) -> None:
+def train_feat(cfg_file: str, load_model=None) -> None:
     """
     Main training function. After training, also test on test data if given.
 
@@ -979,11 +979,17 @@ def train_feat(cfg_file: str) -> None:
     """
     cfg = load_config(cfg_file)
 
+    if load_model is not None:
+        cfg['training']['load_model'] = load_model
+
     # set the random seed
     set_seed(seed=cfg["training"].get("random_seed", 42))
 
     train_data, dev_data, test_data, gls_vocab, txt_vocab = load_feat_data(
-        data_cfg=cfg["data"]
+        data_cfg=cfg["data"],
+        sets=['train', 'dev'],
+        train_size=0.1,
+        dev_size=0.5
     )
 
     # build model and load parameters into it
@@ -1038,7 +1044,9 @@ def train_feat(cfg_file: str) -> None:
     output_path = os.path.join(trainer.model_dir, output_name)
     logger = trainer.logger
     del trainer
-    feat_test(cfg_file, ckpt=ckpt, output_path=output_path, logger=logger)
+
+#    feat_test(cfg_file, ckpt=ckpt, output_path=output_path, logger=logger)
+    return ckpt, output_path, logger
 
 
 if __name__ == "__main__":
@@ -1054,4 +1062,17 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
-    train_feat(cfg_file=args.config)
+#    train_feat(cfg_file=args.config)
+
+    num_training = 10
+    ckpt, output_path, logger = None, None, None
+
+    for training_i in range(num_training):
+        if training_i == 0:
+            load_model = None
+        else:
+            load_model = output_path
+        ckpt, output_path, logger = train_feat(cfg_file=args.config, load_model=load_model)
+
+    feat_test(args.config, ckpt=ckpt, output_path=output_path, logger=logger)
+    print('FINAL MODEL: ', output_path)

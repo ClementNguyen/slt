@@ -15,6 +15,8 @@ data:
     max_sent_length: 400
     random_train_subset: -1
     random_dev_subset: -1
+    gls_vocab: ./data/gls_vocab/gls_vocab.txt
+    txt_vocab: ./data/txt_vocab/txt_vocab.txt
 testing:
     recognition_beam_sizes:
     - 1
@@ -51,10 +53,11 @@ training:
     reset_scheduler: false
     reset_optimizer: false
     random_seed: 42
-    # model_dir: "./sign_sample_model"
-    model_dir: "drive/My Drive/3A/Recvis/slt-master/sign_sample_model"
+    model_dir: "./saved_models/features_wo_anchoring_loss"
+    # model_dir: "drive/My Drive/3A/Recvis/slt-master/sign_sample_model"
     recognition_loss_weight: 0.0
     translation_loss_weight: 1.0
+    anchoring_loss_weight: 0.0
     eval_metric: bleu
     optimizer: adam
     learning_rate: 0.001
