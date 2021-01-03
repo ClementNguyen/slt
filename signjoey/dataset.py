@@ -224,20 +224,16 @@ class FeatTranslationDataset(data.Dataset):
             txt
             body_feat
             body_scores
-            body_2d
-            body_3d
+            body_deltas
             face_feat
             face_scores
-            face_2d
-            face_3d
+            face_deltas
             hand_feat_1
             hand_scores_1
-            hand_2d_1
-            hand_3d_1
+            hand_deltas_1
             hand_feat_2
             hand_scores_2
-            hand_2d_2
-            hand_3d_2
+            hand_deltas_2
     """
 
     @staticmethod
@@ -248,6 +244,7 @@ class FeatTranslationDataset(data.Dataset):
         self,
         path: str,
         fields: Tuple[RawField, RawField, Field, Field, Field, Field, Field, Field, Field, Field, Field, Field],
+        do_anchoring: bool,
         size=1,
         **kwargs
     ):
@@ -270,21 +267,20 @@ class FeatTranslationDataset(data.Dataset):
                 ("txt", fields[3]),
                 ("body_feat", fields[4]),
                 ("body_scores", fields[5]),
-                ("body_2d", fields[6]),
-                ("body_3d", fields[7]),
-                ("face_feat", fields[8]),
-                ("face_scores", fields[9]),
-                ("face_2d", fields[10]),
-                ("face_3d", fields[11]),
-                ("hand_feat_1", fields[12]),
-                ("hand_scores_1", fields[13]),
-                ("hand_2d_1", fields[14]),
-                ("hand_3d_1", fields[15]),
-                ("hand_feat_2", fields[16]),
-                ("hand_scores_2", fields[17]),
-                ("hand_2d_2", fields[18]),
-                ("hand_3d_2", fields[19])   
+                ("body_deltas", fields[6]),
+                ("face_feat", fields[7]),
+                ("face_scores", fields[8]),
+                ("face_deltas", fields[9]),
+                ("hand_feat_1", fields[10]),
+                ("hand_scores_1", fields[11]),
+                ("hand_deltas_1", fields[12]),
+                ("hand_feat_2", fields[13]),
+                ("hand_scores_2", fields[14]),
+                ("hand_deltas_2", fields[15])
             ]
+
+        feat_fields = [4, 7, 10, 13]
+        loss_fields = [5, 6, 8, 9, 11, 12, 14, 15]
 
 #        if not isinstance(path, list):
 #            path = [path]
@@ -302,11 +298,19 @@ class FeatTranslationDataset(data.Dataset):
                     assert samples[seq_id]["signer"] == s["signer"]
                     assert samples[seq_id]["gloss"] == s["gloss"]
                     assert samples[seq_id]["text"] == s["text"]
-                    for field_idx in range(4,20): 
-                      field_name = fields[field_idx][0]
-                      samples[seq_id][field_name] = torch.cat(
-                          [samples[seq_id][field_name], s[field_name]], axis=1
-                      )
+                    for field_idx in range(4,16):
+                        field_name = fields[field_idx][0]
+                        if field_idx in feat_fields:
+                            samples[seq_id][field_name] = torch.cat(
+                                [samples[seq_id][field_name], s[field_name]], axis=1
+                            )
+                        else:
+                            if do_anchoring:
+                                samples[seq_id][field_name] = torch.cat(
+                                    [samples[seq_id][field_name], s[field_name]], axis=1
+                                )
+                            else:
+                                samples[seq_id][field_name] = None
                 else:
                     samples[seq_id] = {
                         "name": s["name"],
@@ -314,54 +318,86 @@ class FeatTranslationDataset(data.Dataset):
                         "gloss": s["gloss"],
                         "text": s["text"],
                         "body_feat": s["body_feat"],
-                        "body_scores": s["body_scores"],
-                        "body_2d": s["body_2d"],
-                        "body_3d": s["body_3d"],
                         "face_feat": s["face_feat"],
-                        "face_scores": s["face_scores"],
-                        "face_2d": s["face_2d"],
-                        "face_3d": s["face_3d"],
                         "hand_feat_1": s["hand_feat_1"],
-                        "hand_scores_1": s["hand_scores_1"],
-                        "hand_2d_1": s["hand_2d_1"],
-                        "hand_3d_1": s["hand_3d_1"],
                         "hand_feat_2": s["hand_feat_2"],
-                        "hand_scores_2": s["hand_scores_2"],
-                        "hand_2d_2": s["hand_2d_2"],
-                        "hand_3d_2": s["hand_3d_2"]
                     }
+                    if do_anchoring:
+                        samples[seq_id] = {
+                            "body_scores": s["body_scores"],
+                            "body_deltas": s["body_deltas"],
+                            "face_scores": s["face_scores"],
+                            "face_deltas": s["face_deltas"],
+                            "hand_scores_1": s["hand_scores_1"],
+                            "hand_deltas_1": s["hand_deltas_1"],
+                            "hand_scores_2": s["hand_scores_2"],
+                            "hand_deltas_2": s["hand_deltas_2"]
+                        }
+                    else:
+                        samples[seq_id] = {
+                            "body_scores": None,
+                            "body_deltas": None,
+                            "face_scores": None,
+                            "face_deltas": None,
+                            "hand_scores_1": None,
+                            "hand_deltas_1": None,
+                            "hand_scores_2": None,
+                            "hand_deltas_2": None
+                        },
 
         examples = []
         for s in samples:
             sample = samples[s]
-            examples.append(
-                data.Example.fromlist(
-                    [
-                        sample["name"],
-                        sample["signer"],
-                        sample["gloss"].strip(),
-                        sample["text"].strip(),
-                        # This is for numerical stability
-                        sample["body_feat"] + 1e-8,
-                        sample["body_scores"] + 1e-8,
-                        sample["body_2d"] + 1e-8,
-                        sample["body_3d"] + 1e-8,
-                        sample["face_feat"] + 1e-8,
-                        sample["face_scores"] + 1e-8,
-                        sample["face_2d"] + 1e-8,
-                        sample["face_3d"] + 1e-8,
-                        sample["hand_feat_1"] + 1e-8,
-                        sample["hand_scores_1"] + 1e-8,
-                        sample["hand_2d_1"] + 1e-8,
-                        sample["hand_3d_1"] + 1e-8,
-                        sample["hand_feat_2"] + 1e-8,
-                        sample["hand_scores_2"] + 1e-8,
-                        sample["hand_2d_2"] + 1e-8,
-                        sample["hand_3d_2"] + 1e-8
-                    ],
-                    fields,
+            if do_anchoring:
+                examples.append(
+                    data.Example.fromlist(
+                        [
+                            sample["name"],
+                            sample["signer"],
+                            sample["gloss"].strip(),
+                            sample["text"].strip(),
+                            # This is for numerical stability
+                            sample["body_feat"] + 1e-8,
+                            sample["body_scores"] + 1e-8,
+                            sample["body_deltas"] + 1e-8,
+                            sample["face_feat"] + 1e-8,
+                            sample["face_scores"] + 1e-8,
+                            sample["face_deltas"] + 1e-8,
+                            sample["hand_feat_1"] + 1e-8,
+                            sample["hand_scores_1"] + 1e-8,
+                            sample["hand_deltas_1"] + 1e-8,
+                            sample["hand_feat_2"] + 1e-8,
+                            sample["hand_scores_2"] + 1e-8,
+                            sample["hand_deltas_2"] + 1e-8
+                        ],
+                        fields,
+                    )
                 )
-            )
+            else:
+                examples.append(
+                    data.Example.fromlist(
+                        [
+                            sample["name"],
+                            sample["signer"],
+                            sample["gloss"].strip(),
+                            sample["text"].strip(),
+                            # This is for numerical stability
+                            sample["body_feat"] + 1e-8,
+                            sample["body_scores"],
+                            sample["body_deltas"],
+                            sample["face_feat"] + 1e-8,
+                            sample["face_scores"],
+                            sample["face_deltas"],
+                            sample["hand_feat_1"] + 1e-8,
+                            sample["hand_scores_1"],
+                            sample["hand_deltas_1"],
+                            sample["hand_feat_2"] + 1e-8,
+                            sample["hand_scores_2"],
+                            sample["hand_deltas_2"]
+                        ],
+                        fields,
+                    )
+                )
         super().__init__(examples, fields, **kwargs)
 
 

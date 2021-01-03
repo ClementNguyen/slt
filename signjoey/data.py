@@ -555,20 +555,16 @@ def load_feat_data(data_cfg: dict, sets = ['train', 'dev', 'test'], train_size=0
     feat_fields = [
                    ('body_feat', 2048), 
                    ('body_scores', 21), 
-                   ('body_2d', 20*13*2), 
-                   ('body_3d', 20*13*3), 
+                   ('body_deltas', 20*13*5),
                    ('face_feat', 2048), 
                    ('face_scores', 11), 
-                   ('face_2d', 10*84*2), 
-                   ('face_3d', 10*84*3),
+                   ('face_deltas', 10*84*5),
                    ('hand_feat_1', 2048), 
                    ('hand_scores_1', 11),
-                   ('hand_2d_1', 10*21*2), 
-                   ('hand_3d_1', 10*21*3), 
+                   ('hand_deltas_1', 10*21*5),
                    ('hand_feat_2', 2048), 
                    ('hand_scores_2', 11),
-                   ('hand_2d_2', 10*21*2), 
-                   ('hand_3d_2', 10*21*3)
+                   ('hand_deltas_2', 10*21*5)
                    ]
 
     for k in range(len(feat_fields)):

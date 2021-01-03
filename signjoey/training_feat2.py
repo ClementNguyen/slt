@@ -40,6 +40,7 @@ from signjoey.batch import FeatBatch
 from signjoey.model_dope_feat import FeatModel, build_feat_model
 from signjoey.data import load_feat_data, make_feat_data_iter
 from signjoey.prediction_feat import validate_on_feat_data, feat_test
+from signjoey.loss import AnchoringLoss
 
 
 # pylint: disable=too-many-instance-attributes
@@ -80,10 +81,13 @@ class FeatTrainManager:
         self._log_parameters_list()
         # Check if we are doing only recognition or only translation or both
         self.do_recognition = (
-            config["training"].get("recognition_loss_weight", 1.0) > 0.0
+            config["training"].get("recognition_loss_weight", 0.0) > 0.0
         )
         self.do_translation = (
             config["training"].get("translation_loss_weight", 1.0) > 0.0
+        )
+        self.do_anchoring = (
+            config["training"].get("anchoring_loss_weight", 1.0) > 0.0
         )
 
         # Get Recognition and Translation specific parameters
@@ -91,6 +95,8 @@ class FeatTrainManager:
             self._get_recognition_params(train_config=train_config)
         if self.do_translation:
             self._get_translation_params(train_config=train_config)
+        if self.do_anchoring:
+            self._get_anchoring_params(train_config=train_config)
 
         # optimization
         self.last_best_lr = train_config.get("learning_rate", -1)
@@ -174,6 +180,8 @@ class FeatTrainManager:
                 self.translation_loss_function.cuda()
             if self.do_recognition:
                 self.recognition_loss_function.cuda()
+            if self.do_anchoring:
+                self.anchoring_loss_function.cuda()
 
         # initialize training statistics
         self.steps = 0
@@ -181,6 +189,7 @@ class FeatTrainManager:
         self.stop = False
         self.total_txt_tokens = 0
         self.total_gls_tokens = 0
+        self.total_anchor_tokens = 0
         self.best_ckpt_iteration = 0
         # initial values for best scores
         self.best_ckpt_score = np.inf if self.minimize_metric else -np.inf
@@ -244,6 +253,11 @@ class FeatTrainManager:
         self.translation_max_output_length = train_config.get(
             "translation_max_output_length", None
         )
+
+    def _get_anchoring_params(self, train_config) -> None:
+
+        self.anchoring_loss_function = AnchoringLoss()
+        self.anchoring_loss_weight = train_config.get("anchoring_loss_weight", 1.0)
 
     def _save_checkpoint(self) -> None:
         """
@@ -377,6 +391,9 @@ class FeatTrainManager:
             if self.do_translation:
                 processed_txt_tokens = self.total_txt_tokens
                 epoch_translation_loss = 0
+            if self.do_anchoring:
+                processed_anchor_tokens = self.total_anchor_tokens
+                epoch_anchoring_loss = 0
 
             for batch in iter(train_iter):
                 # reactivate training
@@ -399,7 +416,7 @@ class FeatTrainManager:
                 # memory-6794e10db672
                 update = count == 0
 
-                recognition_loss, translation_loss = self._train_batch(
+                recognition_loss, translation_loss, anchoring_loss = self._train_batch(
                     batch, update=update
                 )
 
@@ -414,6 +431,12 @@ class FeatTrainManager:
                         "train/train_translation_loss", translation_loss, self.steps
                     )
                     epoch_translation_loss += translation_loss.detach().cpu().numpy()
+
+                if self.do_anchoring:
+                    self.tb_writer.add_scalar(
+                        "train/train_anchoring_loss", anchoring_loss, self.steps
+                    )
+                    epoch_anchoring_loss += anchoring_loss.detach().cpu().numpy()
 
                 count = self.batch_multiplier if update else count
                 count -= 1
@@ -454,6 +477,17 @@ class FeatTrainManager:
                         )
                         log_out += "Txt Tokens per Sec: {:8.0f} || ".format(
                             elapsed_txt_tokens / elapsed
+                        )
+                    if self.do_anchoring:
+                        elapsed_anchor_tokens = (
+                            self.total_anchor_tokens - processed_anchor_tokens
+                        )
+                        processed_anchor_tokens = self.total_anchor_tokens
+                        log_out += "Batch Anchoring Loss: {:10.6f} => ".format(
+                            anchoring_loss
+                        )
+                        log_out += "Anchor Tokens per Sec: {:8.0f} || ".format(
+                            elapsed_anchor_tokens / elapsed
                         )
                     log_out += "Lr: {:.6f}".format(self.optimizer.param_groups[0]["lr"])
                     self.logger.info(log_out)
@@ -744,7 +778,7 @@ class FeatTrainManager:
         :return normalized_translation_loss: Normalized translation loss
         """
 
-        recognition_loss, translation_loss = self.model.get_loss_for_batch(
+        recognition_loss, translation_loss, anchoring_loss = self.model.get_loss_for_batch(
             batch=batch,
             recognition_loss_function=self.recognition_loss_function
             if self.do_recognition
@@ -752,11 +786,20 @@ class FeatTrainManager:
             translation_loss_function=self.translation_loss_function
             if self.do_translation
             else None,
+            anchoring_loss_function=self.anchoring_loss_function
+            if self.do_anchoring
+            else None,
             recognition_loss_weight=self.recognition_loss_weight
             if self.do_recognition
             else None,
             translation_loss_weight=self.translation_loss_weight
             if self.do_translation
+            else None,
+            anchoring_loss_cls_weight=self.anchoring_loss_weight
+            if self.do_anchoring
+            else None,
+            anchoring_loss_reg_weight=self.anchoring_loss_weight
+            if self.do_anchoring
             else None,
         )
 
@@ -784,7 +827,10 @@ class FeatTrainManager:
         else:
             normalized_recognition_loss = 0
 
-        total_loss = normalized_recognition_loss + normalized_translation_loss
+        if self.do_anchoring:
+            normalized_anchoring_loss = anchoring_loss / self.batch_multiplier
+
+        total_loss = normalized_recognition_loss + normalized_translation_loss + normalized_anchoring_loss
         # compute gradients
         total_loss.backward()
 
@@ -805,8 +851,10 @@ class FeatTrainManager:
             self.total_gls_tokens += batch.num_gls_tokens
         if self.do_translation:
             self.total_txt_tokens += batch.num_txt_tokens
+        if self.do_anchoring:
+            self.total_anchor_tokens += batch.num_txt_tokens
 
-        return normalized_recognition_loss, normalized_translation_loss
+        return normalized_recognition_loss, normalized_translation_loss, normalized_anchoring_loss
 
     def _add_report(
         self,

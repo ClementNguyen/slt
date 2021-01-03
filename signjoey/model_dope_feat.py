@@ -50,8 +50,9 @@ class FeatModel(nn.Module):
         txt_embed: Embeddings,
         gls_vocab: GlossVocabulary,
         txt_vocab: TextVocabulary,
-        do_recognition: bool = True,
+        do_recognition: bool = False,
         do_translation: bool = True,
+        do_anchoring: bool = True
     ):
         """
         Create a new encoder-decoder model
@@ -90,8 +91,14 @@ class FeatModel(nn.Module):
         self.gloss_output_layer = gloss_output_layer
         self.do_recognition = do_recognition
         self.do_translation = do_translation
+        self.do_anchoring = do_anchoring
 
         self.output_layer = nn.Linear(4*self.decoder_body._hidden_size, self.decoder_body._output_size, bias=False)
+
+        if self.do_anchoring:
+            self.dope_predictor = DopePredictor()
+        else:
+            self.dope_predictor = None
 
     # pylint: disable=arguments-differ
     def forward(
@@ -161,7 +168,12 @@ class FeatModel(nn.Module):
         else:
             decoder_outputs = None
 
-        return decoder_outputs, gloss_probabilities
+        if self.do_anchoring:
+            dope_outputs = self.dope_predictor(encoder_body, encoder_face, encoder_hand_1, encoder_hand_2)
+        else:
+            dope_outputs = None
+
+        return decoder_outputs, gloss_probabilities, dope_outputs
 
     def encode(
         self, body_feat: Tensor, face_feat: Tensor, hand_feat_1: Tensor, hand_feat_2: Tensor, sgn_mask: Tensor, sgn_length: Tensor
@@ -281,8 +293,11 @@ class FeatModel(nn.Module):
         batch: FeatBatch,
         recognition_loss_function: nn.Module,
         translation_loss_function: nn.Module,
+        anchoring_loss_function: nn.Module,
         recognition_loss_weight: float,
         translation_loss_weight: float,
+        anchoring_loss_cls_weight: float,
+        anchoring_loss_reg_weight: float,
     ) -> (Tensor, Tensor):
         """
         Compute non-normalized loss and number of tokens for a batch
@@ -298,7 +313,7 @@ class FeatModel(nn.Module):
         # pylint: disable=unused-variable
 
         # Do a forward pass
-        decoder_outputs, gloss_probabilities = self.forward(
+        decoder_outputs, gloss_probabilities, dope_outputs = self.forward(
             # sgn=batch.sgn,
             body_feat=batch.body_feat,
             face_feat=batch.face_feat,
@@ -337,7 +352,27 @@ class FeatModel(nn.Module):
         else:
             translation_loss = None
 
-        return recognition_loss, translation_loss
+        if self.do_anchoring:
+            assert dope_outputs is not None
+            scores, pose_deltas = dope_outputs
+            # Calculate Anchoring Loss
+            anchoring_loss = anchoring_loss_function(
+                    scores,
+                    pose_deltas,
+                    batch.body_scores,
+                    batch.body_deltas,
+                    batch.face_scores,
+                    batch.face_deltas,
+                    batch.hand_scores_1,
+                    batch.hand_deltas_1,
+                    batch.hand_scores_2,
+                    batch.hand_deltas_2
+                )
+            anchoring_loss = (anchoring_loss[0]*anchoring_loss_cls_weight + anchoring_loss[1]*anchoring_loss_reg_weight)
+        else:
+            anchoring_loss = None
+
+        return recognition_loss, translation_loss, anchoring_loss
 
     def run_batch(
         self,
@@ -500,6 +535,7 @@ def build_feat_model(
     txt_vocab: TextVocabulary,
     do_recognition: bool = False,
     do_translation: bool = True,
+    do_anchoring: bool = True
 ) -> FeatModel:
     """
     Build and initialize the model according to the configuration.
@@ -616,6 +652,7 @@ def build_feat_model(
         txt_vocab=txt_vocab,
         do_recognition=do_recognition,
         do_translation=do_translation,
+        do_anchoring=do_anchoring
     )
 
     if do_translation:
@@ -637,3 +674,35 @@ def build_feat_model(
     initialize_feat_model(model, cfg, txt_padding_idx)
 
     return model
+
+
+class DopePredictor(nn.Module):
+
+    def __init__(self):
+        super(self.__class__, self).__init__()
+
+        in_channels = 512
+        num_joints = {'body': 13, 'hand': 21, 'face': 84}
+        num_anchor_poses = {'body': 20, 'hand': 10, 'face': 10}
+        dict_num_classes = {k: v + 1 for k, v in num_anchor_poses.items()}
+        dict_num_posereg = {k: num_anchor_poses[k] * num_joints[k] * 5 for k in num_joints.keys()}
+
+        self.body_cls_score = nn.Linear(in_channels, dict_num_classes['body'])
+        self.body_pose_pred = nn.Linear(in_channels, dict_num_posereg['body'])
+        self.hand_cls_score = nn.Linear(in_channels, dict_num_classes['hand'])
+        self.hand_pose_pred = nn.Linear(in_channels, dict_num_posereg['hand'])
+        self.face_cls_score = nn.Linear(in_channels, dict_num_classes['face'])
+        self.face_pose_pred = nn.Linear(in_channels, dict_num_posereg['face'])
+
+    def forward(self, encoder_out_body, encoder_out_face, encoder_out_hand_1, encoder_out_hand_2):
+
+        scores['body'] = self.body_cls_score(encoder_out_body)
+        pose_deltas['body'] = self.body_pose_pred(encoder_out_body)
+        scores['hand_1'] = self.hand_cls_score(encoder_out_hand_1)
+        pose_deltas['hand_1'] = self.hand_pose_pred(encoder_out_hand_1)
+        scores['hand_2'] = self.hand_cls_score(encoder_out_hand_2)
+        pose_deltas['hand_2'] = self.hand_pose_pred(encoder_out_hand_2)
+        scores['face'] = self.face_cls_score(encoder_out_face)
+        pose_deltas['face'] = self.face_pose_pred(encoder_out_face)
+
+        return scores, pose_deltas
