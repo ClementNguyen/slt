@@ -32,6 +32,7 @@ from signjoey.phoenix_utils.phoenix_cleanup import (
 from signjoey.batch import FeatBatch
 from signjoey.model_dope_feat import FeatModel, build_feat_model
 from signjoey.data import load_feat_data, make_feat_data_iter
+from signjoey.loss import AnchoringLoss
 
 
 # pylint: disable=too-many-arguments,too-many-locals,no-member
@@ -48,6 +49,9 @@ def validate_on_feat_data(
     translation_loss_function: torch.nn.Module,
     translation_loss_weight: int,
     translation_max_output_length: int,
+    do_anchoring: bool,
+    anchoring_loss_function: torch.nn.Module,
+    anchoring_loss_weight: int,
     level: str,
     txt_pad_index: int,
     recognition_beam_size: int = 1,
@@ -138,7 +142,7 @@ def validate_on_feat_data(
             )
             sort_reverse_index = batch.sort_by_sgn_lengths()
             
-            batch_recognition_loss, batch_translation_loss = model.get_loss_for_batch(
+            batch_recognition_loss, batch_translation_loss, batch_anchoring_loss = model.get_loss_for_batch(
                 batch=batch,
                 recognition_loss_function=recognition_loss_function
                 if do_recognition
@@ -151,6 +155,15 @@ def validate_on_feat_data(
                 else None,
                 translation_loss_weight=translation_loss_weight
                 if do_translation
+                else None,
+                anchoring_loss_cls_weight=anchoring_loss_weight
+                if do_anchoring
+                else None,
+                anchoring_loss_reg_weight=anchoring_loss_weight
+                if do_anchoring
+                else None,
+                anchoring_loss_function=anchoring_loss_function
+                if do_anchoring
                 else None,
             )
             if do_recognition:
@@ -326,7 +339,8 @@ def feat_test(
     )
 
     # load dev data
-    _, dev_data, _, gls_vocab, txt_vocab = load_feat_data(data_cfg=cfg["data"], sets=['dev'], dev_size=1)
+    do_anchoring = cfg["training"].get("anchoring_loss_weight", 1.0) > 0.0
+    _, dev_data, _, gls_vocab, txt_vocab = load_feat_data(data_cfg=cfg["data"], sets=['dev'], dev_size=1, do_anchoring=do_anchoring)
 
     # load model state from disk
     model_checkpoint = load_checkpoint(ckpt, use_cuda=use_cuda)
@@ -343,6 +357,7 @@ def feat_test(
         else cfg["data"]["feature_size"],
         do_recognition=do_recognition,
         do_translation=do_translation,
+        do_anchoring=do_anchoring
     )
     model.load_state_dict(model_checkpoint["model_state"])
 
@@ -383,6 +398,10 @@ def feat_test(
         )
         if use_cuda:
             translation_loss_function.cuda()
+    if do_anchoring:
+        anchoring_loss_function = AnchoringLoss()
+        if use_cuda:
+            anchoring_loss_function.cuda()
 
     # NOTE (Cihan): Currently Hardcoded to be 0 for TensorFlow decoding
     assert model.gls_vocab.stoi[SIL_TOKEN] == 0
@@ -484,6 +503,11 @@ def feat_test(
                     translation_beam_size=tbw,
                     translation_beam_alpha=ta,
                     frame_subsampling_ratio=frame_subsampling_ratio,
+                    do_anchoring=do_anchoring,
+                    anchoring_loss_function=anchoring_loss_function
+                    if do_anchoring
+                    else None,
+                    anchoring_loss_weight=1 if do_anchoring else None,
                 )
 
                 if (
@@ -598,7 +622,7 @@ def feat_test(
     del dev_data
 
     # load dev data
-    _, _, test_data, gls_vocab, txt_vocab = load_feat_data(data_cfg=cfg["data"], sets=['test'], dev_size=1)
+    _, _, test_data, gls_vocab, txt_vocab = load_feat_data(data_cfg=cfg["data"], sets=['test'], dev_size=1, do_anchoring=do_anchoring)
 
     test_best_result = validate_on_feat_data(
         model=model,
@@ -629,6 +653,11 @@ def feat_test(
         else None,
         translation_beam_alpha=dev_best_translation_alpha if do_translation else None,
         frame_subsampling_ratio=frame_subsampling_ratio,
+        do_anchoring=do_anchoring,
+        anchoring_loss_function=anchoring_loss_function
+        if do_anchoring
+        else None,
+        anchoring_loss_weight=1 if do_anchoring else None,
     )
 
     logger.info(

@@ -470,7 +470,7 @@ def make_pose_data_iter(
 
 from signjoey.dataset import FeatTranslationDataset
 
-def load_feat_data(data_cfg: dict, sets = ['train', 'dev', 'test'], train_size=0.1, dev_size=1, test_size=1) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabulary):
+def load_feat_data(data_cfg: dict, do_anchoring: bool, sets = ['train', 'dev', 'test'], train_size=0.1, dev_size=1, test_size=1) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabulary):
     """
     Load train, dev and optionally test data as specified in configuration.
     Vocabularies are created from the training set with a limit of `voc_limit`
@@ -588,7 +588,8 @@ def load_feat_data(data_cfg: dict, sets = ['train', 'dev', 'test'], train_size=0
             fields=field_list,
             filter_pred=lambda x: len(vars(x)["body_2d"]) <= max_sent_length
             and len(vars(x)["txt"]) <= max_sent_length,
-            size=train_size
+            size=train_size,
+            do_anchoring=do_anchoring
         )
         random_train_subset = data_cfg.get("random_train_subset", -1)
         if random_train_subset > -1:
@@ -628,7 +629,8 @@ def load_feat_data(data_cfg: dict, sets = ['train', 'dev', 'test'], train_size=0
         dev_data = FeatTranslationDataset(
             path=dev_paths,
             fields=field_list,
-            size=dev_size
+            size=dev_size,
+            do_anchoring=do_anchoring
         )
         random_dev_subset = data_cfg.get("random_dev_subset", -1)
         if random_dev_subset > -1:
@@ -646,7 +648,8 @@ def load_feat_data(data_cfg: dict, sets = ['train', 'dev', 'test'], train_size=0
         test_data = FeatTranslationDataset(
             path=test_paths,
             fields=field_list,
-            size=test_size
+            size=test_size,
+            do_anchoring=do_anchoring
         )
     else:
         test_data = None
@@ -688,7 +691,7 @@ def make_feat_data_iter(
             batch_size_fn=batch_size_fn,
             train=True,
             sort_within_batch=True,
-            sort_key=lambda x: len(x.body_2d),
+            sort_key=lambda x: len(x.body_feat),
             shuffle=shuffle,
         )
     else:

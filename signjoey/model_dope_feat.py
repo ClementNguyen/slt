@@ -533,9 +533,9 @@ def build_feat_model(
     sgn_dim: int,
     gls_vocab: GlossVocabulary,
     txt_vocab: TextVocabulary,
+    do_anchoring: bool,
     do_recognition: bool = False,
     do_translation: bool = True,
-    do_anchoring: bool = True
 ) -> FeatModel:
     """
     Build and initialize the model according to the configuration.
@@ -695,6 +695,9 @@ class DopePredictor(nn.Module):
         self.face_pose_pred = nn.Linear(in_channels, dict_num_posereg['face'])
 
     def forward(self, encoder_out_body, encoder_out_face, encoder_out_hand_1, encoder_out_hand_2):
+
+        scores = {}
+        pose_deltas = {}
 
         scores['body'] = self.body_cls_score(encoder_out_body)
         pose_deltas['body'] = self.body_pose_pred(encoder_out_body)

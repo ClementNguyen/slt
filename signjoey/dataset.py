@@ -153,11 +153,11 @@ class PoseTranslationDataset(data.Dataset):
 #        if not isinstance(path, list):
 #            path = [path]
 
-        path = os.listdir(path)
+        path = [os.path.join(path, filename) for filename in os.listdir(path)]
 
         samples = {}
         for annotation_file in path:
-            tmp = load_dataset_file(annotation_file)
+            tmp = [load_dataset_unzipped_file(annotation_file)]
             for s in tmp:
                 seq_id = s["name"]
                 if seq_id in samples:
@@ -285,12 +285,13 @@ class FeatTranslationDataset(data.Dataset):
 #        if not isinstance(path, list):
 #            path = [path]
 
-        path = os.listdir(path)
-        path = random.shuffle(path)[:int(len(path)*size)]
+        path = [os.path.join(path, filename) for filename in os.listdir(path)]
+        random.shuffle(path)
+        path = path[:int(len(path)*size)]
 
         samples = {}
         for annotation_file in path:
-            tmp = load_dataset_file(annotation_file)
+            tmp = [load_dataset_unzipped_file(annotation_file)]
             for s in tmp:
                 seq_id = s["name"]
                 if seq_id in samples:
@@ -312,18 +313,16 @@ class FeatTranslationDataset(data.Dataset):
                             else:
                                 samples[seq_id][field_name] = None
                 else:
-                    samples[seq_id] = {
-                        "name": s["name"],
-                        "signer": s["signer"],
-                        "gloss": s["gloss"],
-                        "text": s["text"],
-                        "body_feat": s["body_feat"],
-                        "face_feat": s["face_feat"],
-                        "hand_feat_1": s["hand_feat_1"],
-                        "hand_feat_2": s["hand_feat_2"],
-                    }
                     if do_anchoring:
                         samples[seq_id] = {
+                            "name": s["name"],
+                            "signer": s["signer"],
+                            "gloss": s["gloss"],
+                            "text": s["text"],
+                            "body_feat": s["body_feat"],
+                            "face_feat": s["face_feat"],
+                            "hand_feat_1": s["hand_feat_1"],
+                            "hand_feat_2": s["hand_feat_2"],
                             "body_scores": s["body_scores"],
                             "body_deltas": s["body_deltas"],
                             "face_scores": s["face_scores"],
@@ -335,15 +334,23 @@ class FeatTranslationDataset(data.Dataset):
                         }
                     else:
                         samples[seq_id] = {
-                            "body_scores": None,
-                            "body_deltas": None,
-                            "face_scores": None,
-                            "face_deltas": None,
-                            "hand_scores_1": None,
-                            "hand_deltas_1": None,
-                            "hand_scores_2": None,
-                            "hand_deltas_2": None
-                        },
+                            "name": s["name"],
+                            "signer": s["signer"],
+                            "gloss": s["gloss"],
+                            "text": s["text"],
+                            "body_feat": s["body_feat"],
+                            "face_feat": s["face_feat"],
+                            "hand_feat_1": s["hand_feat_1"],
+                            "hand_feat_2": s["hand_feat_2"],
+                            "body_scores": torch.Tensor(),
+                            "body_deltas": torch.Tensor(),
+                            "face_scores": torch.Tensor(),
+                            "face_deltas": torch.Tensor(),
+                            "hand_scores_1": torch.Tensor(),
+                            "hand_deltas_1": torch.Tensor(),
+                            "hand_scores_2": torch.Tensor(),
+                            "hand_deltas_2": torch.Tensor(),
+                        }
 
         examples = []
         for s in samples:
@@ -409,3 +416,8 @@ class FeatTranslationDataset(data.Dataset):
 #             loaded_object = pickle.load(f)
 #             dataset.append(loaded_object)
 #     return dataset
+
+def load_dataset_unzipped_file(filename):
+    with open(filename, "rb") as f:
+        loaded_object = pickle.load(f)
+        return loaded_object

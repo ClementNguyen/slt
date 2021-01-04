@@ -540,6 +540,14 @@ class FeatTrainManager:
                         if self.do_translation
                         else None,
                         frame_subsampling_ratio=self.frame_subsampling_ratio,
+                        # Anchoring Parameters
+                        do_anchoring=self.do_anchoring,
+                        anchoring_loss_function=self.anchoring_loss_function
+                        if self.do_anchoring
+                        else None,
+                        anchoring_loss_weight=self.anchoring_loss_weight
+                        if self.do_anchoring
+                        else None,
                     )
                     
                     self.model.train()
@@ -752,10 +760,12 @@ class FeatTrainManager:
 
             self.logger.info(
                 "Epoch %3d: Total Training Recognition Loss %.2f "
-                " Total Training Translation Loss %.2f ",
+                " Total Training Translation Loss %.2f "
+                " Total Training Anchoring Loss %.2f ",
                 epoch_no + 1,
                 epoch_recognition_loss if self.do_recognition else -1,
                 epoch_translation_loss if self.do_translation else -1,
+                epoch_anchoring_loss if self.do_anchoring else -1,
             )
         else:
             self.logger.info("Training ended after %3d epochs.", epoch_no + 1)
@@ -829,6 +839,8 @@ class FeatTrainManager:
 
         if self.do_anchoring:
             normalized_anchoring_loss = anchoring_loss / self.batch_multiplier
+        else:
+            normalized_anchoring_loss = 0
 
         total_loss = normalized_recognition_loss + normalized_translation_loss + normalized_anchoring_loss
         # compute gradients
@@ -1032,12 +1044,13 @@ def train_feat(cfg_file: str, load_model=None) -> None:
 
     # set the random seed
     set_seed(seed=cfg["training"].get("random_seed", 42))
-
+    do_anchoring = cfg["training"].get("anchoring_loss_weight", 1.0) > 0.0
     train_data, dev_data, test_data, gls_vocab, txt_vocab = load_feat_data(
         data_cfg=cfg["data"],
         sets=['train', 'dev'],
         train_size=0.1,
-        dev_size=0.5
+        dev_size=0.5,
+        do_anchoring=do_anchoring
     )
 
     # build model and load parameters into it
@@ -1052,6 +1065,7 @@ def train_feat(cfg_file: str, load_model=None) -> None:
         else cfg["data"]["feature_size"],
         do_recognition=do_recognition,
         do_translation=do_translation,
+        do_anchoring=do_anchoring
     )
 
     # for training management, e.g. early stopping and model selection

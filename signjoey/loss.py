@@ -5,7 +5,7 @@ Module to implement training loss
 
 import torch
 from torch import nn, Tensor
-import nn.functional as F
+import torch.nn.functional as F
 from torch.autograd import Variable
 
 
@@ -103,19 +103,19 @@ class AnchoringLoss(nn.Module):
                 ):
 
         cls_loss_body = self.cls_criterion(F.log_softmax(scores['body'] / self.T, dim=-1),
-                                           F.softmax(body_scores / T, dim=-1))
+                                           F.softmax(body_scores / self.T, dim=-1))
         cls_loss_face = self.cls_criterion(F.log_softmax(scores['face'] / self.T, dim=-1),
-                                           F.softmax(face_scores / T, dim=-1))
+                                           F.softmax(face_scores / self.T, dim=-1))
         cls_loss_hand_1 = self.cls_criterion(F.log_softmax(scores['hand_1'] / self.T, dim=-1),
-                                             F.softmax(hand_scores_1 / T, dim=-1))
+                                             F.softmax(hand_scores_1 / self.T, dim=-1))
         cls_loss_hand_2 = self.cls_criterion(F.log_softmax(scores['hand_2'] / self.T, dim=-1),
-                                             F.softmax(hand_scores_2 / T, dim=-1))
+                                             F.softmax(hand_scores_2 / self.T, dim=-1))
         cls_loss = (cls_loss_body + cls_loss_face + cls_loss_hand_1 + cls_loss_hand_2) / 4
 
         reg_loss_body = self.reg_criterion(pose_deltas['body'], body_deltas)
         reg_loss_face = self.reg_criterion(pose_deltas['face'], face_deltas)
         reg_loss_hand_1 = self.reg_criterion(pose_deltas['hand_1'], hand_deltas_1)
         reg_loss_hand_2 = self.reg_criterion(pose_deltas['hand_2'], hand_deltas_2)
-        reg_loss = (reg_loss_body + reg_loss_face + reg_loss_hand_1 + reg_loss_hand_2) / 4
+        reg_loss = (reg_loss_body + reg_loss_face + reg_loss_hand_1 + reg_loss_hand_2) / 4 / 1000
 
         return cls_loss, reg_loss

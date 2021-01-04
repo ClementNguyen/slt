@@ -383,21 +383,16 @@ class FeatBatch:
         # self.sgn, self.sgn_lengths = torch_batch.sgn
         self.body_feat, self.sgn_lengths = torch_batch.body_feat
         self.body_scores, _ = torch_batch.body_scores
-        self.body_2d, _ = torch_batch.body_2d
-        self.body_3d, _ = torch_batch.body_3d
+        self.body_deltas, _ = torch_batch.body_deltas
         self.face_feat, _ = torch_batch.face_feat
         self.face_scores, _ = torch_batch.face_scores
-        self.face_2d, _ = torch_batch.face_2d
-        self.face_3d, _ = torch_batch.face_3d
+        self.face_deltas, _ = torch_batch.face_deltas
         self.hand_feat_1, _ = torch_batch.hand_feat_1
         self.hand_scores_1, _ = torch_batch.hand_scores_1
-        self.hand_2d_1, _ = torch_batch.hand_2d_1
-        self.hand_3d_1, _ = torch_batch.hand_3d_1
+        self.hand_deltas_1, _ = torch_batch.hand_deltas_1
         self.hand_feat_2, _ = torch_batch.hand_feat_2
         self.hand_scores_2, _ = torch_batch.hand_scores_2
-        self.hand_2d_2, _ = torch_batch.hand_2d_2
-        self.hand_3d_2, _ = torch_batch.hand_3d_2
-        
+        self.hand_deltas_2, _ = torch_batch.hand_deltas_2
 
         # Here be dragons
         # if frame_subsampling_ratio:
@@ -450,7 +445,7 @@ class FeatBatch:
         self.num_txt_tokens = None
         self.num_gls_tokens = None
         self.use_cuda = use_cuda
-        self.num_seqs = self.body_2d.size(0)
+        self.num_seqs = self.body_feat.size(0)
 
         if hasattr(torch_batch, "txt"):
             txt, txt_lengths = torch_batch.txt
@@ -480,21 +475,16 @@ class FeatBatch:
         # self.sgn_mask = self.sgn_mask.cuda()
         self.body_feat = self.body_feat.cuda()
         self.body_scores = self.body_scores.cuda()
-        self.body_2d = self.body_2d.cuda()
-        self.body_3d = self.body_3d.cuda()
+        self.body_deltas = self.body_deltas.cuda()
         self.face_feat = self.face_feat.cuda()
         self.face_scores = self.face_scores.cuda()
-        self.face_2d = self.face_2d.cuda()
-        self.face_3d = self.face_3d.cuda()
+        self.face_deltas = self.face_deltas.cuda()
         self.hand_feat_1 = self.hand_feat_1.cuda()
         self.hand_scores_1 = self.hand_scores_1.cuda()
-        self.hand_2d_1 = self.hand_2d_1.cuda()
-        self.hand_3d_1 = self.hand_3d_1.cuda()
+        self.hand_deltas_1 = self.hand_deltas_1.cuda()
         self.hand_feat_2 = self.hand_feat_2.cuda()
         self.hand_scores_2 = self.hand_scores_2.cuda()
-        self.hand_2d_2 = self.hand_2d_2.cuda()
-        self.hand_3d_2 = self.hand_3d_2.cuda()
-
+        self.hand_deltas_2 = self.hand_deltas_2.cuda()
 
         if self.txt_input is not None:
             self.txt = self.txt.cuda()
@@ -515,20 +505,17 @@ class FeatBatch:
         # self.sgn = self.sgn[perm_index]
         self.body_feat = self.body_feat[perm_index]  
         self.body_scores = self.body_scores[perm_index]  
-        self.body_2d = self.body_2d[perm_index]  
-        self.body_3d = self.body_3d[perm_index]  
+        self.body_deltas = self.body_deltas[perm_index]
         self.face_feat = self.face_feat[perm_index]
         self.face_scores = self.face_scores[perm_index]
-        self.face_2d = self.face_2d[perm_index]  
-        self.face_3d = self.face_3d[perm_index]
-        self.hand_feat_1 = self.hand_feat_1[perm_index]  
-        self.hand_scores_1 = self.hand_scores_1[perm_index]  
-        self.hand_2d_1 = self.hand_2d_1[perm_index]  
-        self.hand_3d_1 = self.hand_3d_1[perm_index]  
+        self.face_deltas = self.face_deltas[perm_index]
+        self.hand_feat_1 = self.hand_feat_1[perm_index]
+        self.hand_scores_1 = self.hand_scores_1[perm_index]
+        self.hand_deltas_1 = self.hand_deltas_1[perm_index]
         self.hand_feat_2 = self.hand_feat_2[perm_index]
         self.hand_scores_2 = self.hand_scores_2[perm_index]
-        self.hand_2d_2 = self.hand_2d_2[perm_index]  
-        self.hand_3d_2 = self.hand_3d_2[perm_index]  
+        self.hand_deltas_2 = self.hand_deltas_2[perm_index]
+
         # self.sgn_mask = self.sgn_mask[perm_index]
         self.sgn_lengths = self.sgn_lengths[perm_index]
 

@@ -352,7 +352,7 @@ def beam_search(
             topk_log_probs = topk_scores.clone()
 
         # reconstruct beam origin and true word ids from flattened order
-        topk_beam_index = topk_ids.div(decoder.output_size)
+        topk_beam_index = topk_ids.floor_divide(decoder.output_size)
         topk_ids = topk_ids.fmod(decoder.output_size)
 
         # map beam_index to batch_index in the flat representation
@@ -841,7 +841,7 @@ def beam_search_feat(
             topk_log_probs = topk_scores.clone()
 
         # reconstruct beam origin and true word ids from flattened order
-        topk_beam_index = topk_ids.div(decoder_body.output_size)
+        topk_beam_index = topk_ids.floor_divide(decoder_body.output_size)
         topk_ids = topk_ids.fmod(decoder_body.output_size)
 
         # map beam_index to batch_index in the flat representation
@@ -904,7 +904,10 @@ def beam_search_feat(
 
         # reorder indices, outputs and masks
         select_indices = batch_index.view(-1)
-        encoder_output = encoder_output.index_select(0, select_indices)
+        encoder_body = encoder_body.index_select(0, select_indices)
+        encoder_face = encoder_face.index_select(0, select_indices)
+        encoder_hand_1 = encoder_hand_1.index_select(0, select_indices)
+        encoder_hand_2 = encoder_hand_2.index_select(0, select_indices)
         src_mask = src_mask.index_select(0, select_indices)
 
         if hidden is not None and not transformer:
